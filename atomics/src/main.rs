@@ -1,6 +1,7 @@
 use std::{
     cell::UnsafeCell,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    thread::spawn,
 };
 
 const LOCKED: bool = true;
@@ -27,6 +28,7 @@ impl<T> Mutex<T> {
             .compare_exchange_weak(UNLOCKED, LOCKED, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
+            // MESI protocol
             while self.locked.load(Ordering::Relaxed) == LOCKED {}
         }
         // SAFETY: we hold the lock, therefore we can create a mutable reference.
@@ -37,22 +39,52 @@ impl<T> Mutex<T> {
 }
 
 fn main() {
-    let l: &'static _ = Box::leak(Box::new(Mutex::new(0)));
-    let handles: Vec<_> = (0..100)
-        .map(|_| {
-            std::thread::spawn(move || {
-                for _ in 0..1000 {
-                    l.with_lock(|v| {
-                        *v += 1;
-                    })
-                }
-            })
-        })
-        .collect();
+    // let l: &'static _ = Box::leak(Box::new(Mutex::new(0)));
+    // let handles: Vec<_> = (0..100)
+    //     .map(|_| {
+    //         std::thread::spawn(move || {
+    //             for _ in 0..1000 {
+    //                 l.with_lock(|v| {
+    //                     *v += 1;
+    //                 })
+    //             }
+    //         })
+    //     })
+    //     .collect();
 
-    for handle in handles {
-        handle.join().unwrap();
-    }
+    // for handle in handles {
+    //     handle.join().unwrap();
+    // }
 
-    assert_eq!(l.with_lock(|v| *v), 100 * 1000);
+    // assert_eq!(l.with_lock(|v| *v), 100 * 1000);
+    let x: &'static _ = Box::leak(Box::new(AtomicBool::new(false)));
+    let y: &'static _ = Box::leak(Box::new(AtomicBool::new(false)));
+    let z: &'static _ = Box::leak(Box::new(AtomicUsize::new(0)));
+
+    spawn(move || {
+        x.store(true, Ordering::Release);
+    });
+    spawn(move || {
+        y.store(true, Ordering::Release);
+    });
+    let t1 = spawn(move || {
+        while !x.load(Ordering::Acquire) {}
+        if y.load(Ordering::Acquire) {
+            z.fetch_add(1, Ordering::Relaxed);
+        }
+    });
+    let t2 = spawn(move || {
+        while !y.load(Ordering::Acquire) {}
+        if x.load(Ordering::Acquire) {
+            z.fetch_add(1, Ordering::Relaxed);
+        }
+    });
+    t1.join().unwrap();
+    t2.join().unwrap();
+    let z = z.load(Ordering::Acquire);
+    println!("z = {}", z);
+    // what are the possible values of z?
+    // is 0 possible?
+    // is 1 possible?
+    // is 2 possible?
 }

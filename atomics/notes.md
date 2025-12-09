@@ -15,3 +15,10 @@
 - single/atomic operation it does not depend what the current value is it just fetch
 the value and do the operation in an atomic step
 - fetch_add/sub is a single atomic operation but the fetch_update is actually a compare_exchange_weak loop implementation
+
+### sequential consistency
+- basically sequential consistency is acquire release with the additional guarantee that all threads see the same order across all 
+threads
+
+### fences
+fence is basically a way to say synchornize a little bit earlier or a little bit later without doing the actual load and store
